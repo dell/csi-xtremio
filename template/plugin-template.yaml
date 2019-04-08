@@ -1,0 +1,231 @@
+##############################################
+###########                       ############
+###########   Controller plugin   ############
+###########                       ############
+##############################################
+
+kind: StatefulSet
+apiVersion: apps/v1beta1
+metadata:
+  name: csi-xtremio-controller
+  labels:
+    role: csi-xtremio
+  namespace: kube-system
+spec:
+  serviceName: "csi-xtremio"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: csi-xtremio-controller
+        role: csi-xtremio
+    spec:
+      priorityClassName: system-cluster-critical
+      serviceAccount: csi-xtremio-controller-sa
+      containers:
+        - name: csi-provisioner
+          image: #CSI_PROVISIONER#
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--v=5"
+          env:
+            - name: ADDRESS
+              value: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_controller.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+        - name: csi-attacher
+          image: #CSI_ATTACHER#
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_controller.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+        - name: csi-snapshotter
+          image: #CSI_SNAPSHOTTER#
+          args:
+            - "--snapshotter=csi-xtremio.dellemc.com"
+            - "--v=5"
+            - "--snapshot-name-prefix=csi-snapshot"
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_controller.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+        - name: csi-cluster-driver-registrar
+          image: #CSI_CLUSTER_DRIVER#
+          args:
+            - "--v=5"
+            - "--pod-info-mount-version=\"v1\""
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_controller.sock
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+        - name: csi-xtremio-plugin
+          image: #CSI_PLUGIN#
+          env:
+            - name: CSI_ENDPOINT
+              value: unix://var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_controller.sock
+            - name: X_CSI_DEBUG
+              value: "#CSI_XTREMIO_DEBUG#"
+            - name: X_CSI_XTREMIO_AUTOPROBE
+              value: "true"
+            - name: X_CSI_XTREMIO_ENDPOINT
+              value: "https://#MANAGEMENT_IP#/api/json/v3/"
+            - name: X_CSI_XTREMIO_USER
+              value: "#CSI_USER#"
+            - name: X_CSI_SPEC_REQ_VALIDATION
+              value: "false"
+            - name: X_CSI_MODE
+              value: "controller"
+            - name: X_CSI_XTREMIO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: csixtremio
+                  key: password
+            - name: X_CSI_XTREMIO_INSECURE
+              value: "True"
+            - name: GOXTREMIO_DEBUG
+              value: "#CSI_XTREMIO_DEBUG#"
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+      volumes:
+        - name: plugin-dir
+          emptyDir: {}
+
+---
+
+########################################
+###########                 ############
+###########   Node plugin   ############
+###########                 ############
+########################################
+
+kind: DaemonSet
+apiVersion: apps/v1beta2
+metadata:
+  name: csi-xtremio-node
+  labels:
+    role: csi-xtremio
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: csi-xtremio-node
+  template:
+    metadata:
+      labels:
+        app: csi-xtremio-node
+        role: csi-xtremio
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccount: csi-xtremio-node-sa
+      hostNetwork: true
+      containers:
+        - name: csi-node-driver-registrar
+          image: #CSI_NODE_DRIVER#
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /registration/csi-xtremio.dellemc.com /registration/csi-xtremio.dellemc.com-reg.sock"]
+          env:
+            - name: ADDRESS
+              value: /csi/csi_node.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_node.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+        - name: csi-xtremio-plugin
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi_node.sock
+            - name: X_CSI_DEBUG
+              value: "#CSI_XTREMIO_DEBUG#"
+            - name: X_CSI_XTREMIO_AUTOPROBE
+              value: "true"
+            - name: X_CSI_MODE
+              value: "node"
+            - name: X_CSI_SPEC_REQ_VALIDATION
+              value: "false"
+          image: #CSI_PLUGIN#
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: "Bidirectional"
+            - mountPath: /dev
+              name: host-dev
+            - mountPath: /sys
+              name: host-sys
+            - mountPath: /hostetc
+              name: host-etc
+              readOnly: true
+            - mountPath: /hostvarlib/iscsi
+              name: host-var-iscsi
+              readOnly: true
+            - mountPath: /opt/emc/
+              name: xio-path-ig
+              readOnly: true
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+            type: DirectoryOrCreate
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: host-dev
+          hostPath:
+            path: /dev
+        - name: host-sys
+          hostPath:
+            path: /sys
+        # For multipath.conf
+        - name: host-etc
+          hostPath:
+            path: /etc
+        # For iscsi
+        - name: host-var-iscsi
+          hostPath:
+            path: /var/lib/iscsi
+        # For xio_ig_id
+        - name: xio-path-ig
+          hostPath:
+            path: /opt/emc/

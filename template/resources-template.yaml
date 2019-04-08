@@ -1,0 +1,365 @@
+##############################################
+###########                       ############
+###########     Snapshot CRDs     ############
+###########                       ############
+##############################################
+
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: volumesnapshotclasses.snapshot.storage.k8s.io
+  labels:
+    role: csi-xtremio
+spec:
+  group: snapshot.storage.k8s.io
+  names:
+    kind: VolumeSnapshotClass
+    plural: volumesnapshotclasses
+  scope: Cluster
+  version: v1alpha1
+
+---
+
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: volumesnapshotcontents.snapshot.storage.k8s.io
+  labels:
+    role: csi-xtremio
+spec:
+  group: snapshot.storage.k8s.io
+  names:
+    kind: VolumeSnapshotContent
+    plural: volumesnapshotcontents
+  scope: Cluster
+  version: v1alpha1
+
+---
+
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: volumesnapshots.snapshot.storage.k8s.io
+  labels:
+    role: csi-xtremio
+spec:
+  group: snapshot.storage.k8s.io
+  names:
+    kind: VolumeSnapshot
+    plural: volumesnapshots
+  scope: Namespaced
+  version: v1alpha1
+
+---
+
+########################################
+###########                  ###########
+###########  Snapshot Class  ###########
+###########                  ###########
+########################################
+
+apiVersion: snapshot.storage.k8s.io/v1alpha1
+kind: VolumeSnapshotClass
+metadata:
+  name: csi-xtremio-xvc
+  labels:
+    role: csi-xtremio
+  namespace: kube-system
+snapshotter: csi-xtremio.dellemc.com
+
+---
+
+########################################
+###########                 ############
+###########  Storage Class  ############
+###########                 ############
+########################################
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: #STORAGE_CLASS#
+  labels:
+    role: csi-xtremio
+provisioner: csi-xtremio.dellemc.com
+parameters:
+  qos_policy_id: #QoS_POLICY#
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+
+---
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-xtremio-high
+  labels:
+    role: csi-xtremio
+provisioner: csi-xtremio.dellemc.com
+parameters:
+  qos_policy_id: "High"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+
+---
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-xtremio-medium
+  labels:
+    role: csi-xtremio
+provisioner: csi-xtremio.dellemc.com
+parameters:
+  qos_policy_id: "Medium"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+
+---
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: csi-xtremio-low
+  labels:
+    role: csi-xtremio
+provisioner: csi-xtremio.dellemc.com
+parameters:
+  qos_policy_id: "Low"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+
+---
+
+##########################################
+###########                    ###########
+###########  Service Accounts  ###########
+###########                    ###########
+##########################################
+
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: csi-xtremio-controller-sa
+  labels:
+    role: csi-xtremio
+  namespace: kube-system
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-xtremio-node-sa
+  labels:
+    role: csi-xtremio
+  namespace: kube-system
+
+---
+
+#######################################
+###########                 ###########
+###########      Roles      ###########
+###########                 ###########
+#######################################
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-provisioner-role
+  labels:
+    role: csi-xtremio
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["get", "list"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-provisioner-binding
+  labels:
+    role: csi-xtremio
+subjects:
+  - kind: ServiceAccount
+    name: csi-xtremio-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-xtremio-provisioner-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+# Attacher must be able to work with PVs, nodes and VolumeAttachments
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-attacher-role
+  labels:
+    role: csi-xtremio
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["csi.storage.k8s.io"]
+    resources: ["csinodeinfos"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-attacher-binding
+  labels:
+    role: csi-xtremio
+subjects:
+  - kind: ServiceAccount
+    name: csi-xtremio-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-xtremio-attacher-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-snapshotter-role
+  labels:
+    role: csi-xtremio
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "list", "watch", "delete"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-snapshotter-binding
+  labels:
+    role: csi-xtremio
+subjects:
+  - kind: ServiceAccount
+    name: csi-xtremio-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-xtremio-snapshotter-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-cluster-driver-registrar-role
+  labels:
+    role: csi-xtremio
+rules:
+  - apiGroups: ["csi.storage.k8s.io"]
+    resources: ["csidrivers"]
+    verbs: ["create", "delete"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-cluster-driver-registrar-binding
+  labels:
+    role: csi-xtremio
+subjects:
+  - kind: ServiceAccount
+    name: csi-xtremio-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-xtremio-cluster-driver-registrar-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-driver-registrar-role
+  labels:
+    role: csi-xtremio
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-xtremio-driver-registrar-binding
+  labels:
+    role: csi-xtremio
+subjects:
+  - kind: ServiceAccount
+    name: csi-xtremio-node-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-xtremio-driver-registrar-role
+  apiGroup: rbac.authorization.k8s.io
