@@ -151,6 +151,7 @@ function create_plugin_yaml() {
     echo "### create plugin yaml file"
 
     sed -i "s/#MANAGEMENT_IP#/$management_ip/g" $PLUGIN_YAML
+    sed -i "s/#KUBELET_ROOT#/${kubelet_root//\//\\/}/g" $PLUGIN_YAML
     sed -i "s/#CSI_USER#/$csi_username/g" $PLUGIN_YAML
     sed -i "s/#STORAGE_CLASS#/$storage_class_name/g" $PLUGIN_YAML
     sed -i "s/#CSI_PROVISIONER#/${csi_provisioner_path//\//\\/}/g" $PLUGIN_YAML
