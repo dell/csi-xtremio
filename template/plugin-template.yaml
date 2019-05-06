@@ -224,7 +224,7 @@ spec:
         # For iscsi
         - name: host-var-iscsi
           hostPath:
-            path: /var/lib/iscsi
+            path: #ISCSI_DIR#
         # For xio_ig_id
         - name: xio-path-ig
           hostPath:
