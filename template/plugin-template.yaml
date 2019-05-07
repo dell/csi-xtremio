@@ -150,7 +150,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi_node.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_node.sock
+              value: #KUBELET_ROOT#/plugins/csi-xtremio.dellemc.com/csi_node.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -201,15 +201,15 @@ spec:
       volumes:
         - name: registration-dir
           hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: #KUBELET_ROOT#/plugins_registry/
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+            path: #KUBELET_ROOT#/plugins/csi-xtremio.dellemc.com
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:
-            path: /var/lib/kubelet
+            path: #KUBELET_ROOT#
             type: Directory
         - name: host-dev
           hostPath:
@@ -224,7 +224,7 @@ spec:
         # For iscsi
         - name: host-var-iscsi
           hostPath:
-            path: /var/lib/iscsi
+            path: #ISCSI_DIR#
         # For xio_ig_id
         - name: xio-path-ig
           hostPath:
