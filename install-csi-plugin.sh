@@ -139,11 +139,15 @@ function configure_initiator_group() {
 }
 
 function create_install_template() {
+    echo "### create install template"
+
     sed -e '$a\\n---\n' $RESOURCES_TEMPLATE_YAML \
     | sed r - $PLUGIN_TEMPLATE_YAML > $PLUGIN_YAML
 }
 
-function crate_update_template() {
+function create_update_template() {
+    echo "### create update template"
+
     cp $PLUGIN_TEMPLATE_YAML $PLUGIN_YAML
 }
 
@@ -159,6 +163,8 @@ function create_plugin_yaml() {
     sed -i "s/#CSI_CLUSTER_DRIVER#/${csi_cluster_driver_registrar_path//\//\\/}/g" $PLUGIN_YAML
     sed -i "s/#CSI_NODE_DRIVER#/${csi_node_driver_registrar_path//\//\\/}/g" $PLUGIN_YAML
     sed -i "s/#CSI_XTREMIO_DEBUG#/$csi_xtremio_debug/g" $PLUGIN_YAML
+    sed -i "s/#EPHEMERAL_NODE#/$ephemeral_node/g" $PLUGIN_YAML
+    sed -i "s/#KUBELET_ROOT#/${kubelet_root//\//\\/}/g" $PLUGIN_YAML
     sed -i "s/#CSI_PLUGIN#/${plugin_path//\//\\/}/g" $PLUGIN_YAML
 
     if [[ -z "$csi_qos_policy_id" ]]; then
@@ -172,6 +178,7 @@ function create_plugin_yaml() {
 
 function create_k8s_secret() {
     echo "### create k8s secret"
+
     cat $SECRET_TEMPLATE_YAML | sed "s/#CSI_PASSWORD#/$csi_password/g" | kubectl create -f -
     exitcode=$?
     if [[ $exitcode != 0 ]]; then
@@ -183,7 +190,6 @@ function create_k8s_objects() {
     echo "### create k8s objects"
 
     cd $TMPDIR
-
     kubectl create -f $PLUGIN_YAML
     exitcode=$?
     if [[ $exitcode != 0 ]]; then
@@ -217,24 +223,28 @@ function check_kubectl() {
     fi
 }
 
-function controller_initialization() {
+function generate_yaml() {
     export_parameters
 
-    create_xms_user_and_qos
-
-    create_install_template
-    create_plugin_yaml
-
-    if [[ $no_load -eq 0 ]]; then
-      check_kubectl
-      create_k8s_secret
-      create_k8s_objects
+    if [[ $update -eq 1 ]]; then
+      create_update_template
+    else
+      create_xms_user_and_qos
+      create_install_template
     fi
 
+    create_plugin_yaml
+}
+
+function init_controller {
+    generate_yaml
+    check_kubectl
+    create_k8s_secret
+    create_k8s_objects
     exit 0
 }
 
-function node_initialization() {
+function init_node {
     export_parameters
     configure_initiator_group
     exit 0
@@ -262,18 +272,15 @@ function load_docker_images() {
 }
 
 function update_plugin() {
-    echo "### update plugin from new yaml files"
-    export_parameters
-    crate_update_template
-    create_plugin_yaml
-
-    if [[ $no_load -eq 0 ]]; then
+    if [[ $only_yaml -eq 0 ]]; then
+      echo "### update plugin from new yaml files"
+      generate_yaml
       check_kubectl
       remove_k8s_objects
       create_k8s_objects
+      echo "### update plugin - done"
     fi
 
-    echo "### update plugin - done"
     exit 0
 }
 
@@ -286,23 +293,22 @@ if [ $# -eq 0 ]; then
     exit 0
 fi
 
-controller=0
 update=0
-no_load=0
+only_yaml=0
 
 while getopts "cnx:ugh" opt;
 do
     case $opt in
-      c) controller=1
+      c) init_controller
           ;;
-      n) node_initialization
+      n) init_node
           ;;
       x) TARBALL=$OPTARG
          load_docker_images
           ;;
       u) update=1
           ;;
-      g) no_load=1
+      g) only_yaml=1
           ;;
       h) print_help;
           ;;
@@ -313,8 +319,8 @@ do
     esac
 done
 
-if [[ $controller -eq 1 ]]; then
-    controller_initialization
+if [[ $only_yaml -eq 1 ]]; then
+    generate_yaml
 fi
 
 if [[ $update -eq 1 ]]; then
