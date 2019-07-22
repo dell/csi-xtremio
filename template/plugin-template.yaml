@@ -150,7 +150,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi_node.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com/csi_node.sock
+              value: #KUBELET_ROOT#/plugins/csi-xtremio.dellemc.com/csi_node.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -172,6 +172,21 @@ spec:
               value: "node"
             - name: X_CSI_SPEC_REQ_VALIDATION
               value: "false"
+            - name: X_CSI_XTREMIO_ENDPOINT
+              value: "https://#MANAGEMENT_IP#/api/json/v3/"
+            - name: X_CSI_XTREMIO_USER
+              value: "#CSI_USER#"
+            - name: X_CSI_XTREMIO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: csixtremio
+                  key: password
+            - name: X_CSI_XTREMIO_INSECURE
+              value: "True"
+            - name: GOXTREMIO_DEBUG
+              value: "#CSI_XTREMIO_DEBUG#"
+            - name: X_CSI_XTREMIO_EPHEMERAL_NODE
+              value: "#EPHEMERAL_NODE#"
           image: #CSI_PLUGIN#
           securityContext:
             privileged: true
@@ -183,7 +198,7 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: pods-mount-dir
-              mountPath: /var/lib/kubelet
+              mountPath: #KUBELET_ROOT#
               mountPropagation: "Bidirectional"
             - mountPath: /dev
               name: host-dev
@@ -192,24 +207,23 @@ spec:
             - mountPath: /hostetc
               name: host-etc
               readOnly: true
-            - mountPath: /hostvarlib/iscsi
-              name: host-var-iscsi
-              readOnly: true
+            - mountPath: /noderoot
+              name: node-root
+              mountPropagation: "Bidirectional"
             - mountPath: /opt/emc/
               name: xio-path-ig
-              readOnly: true
       volumes:
         - name: registration-dir
           hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: #KUBELET_ROOT#/plugins_registry/
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/csi-xtremio.dellemc.com
+            path: #KUBELET_ROOT#/plugins/csi-xtremio.dellemc.com
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:
-            path: /var/lib/kubelet
+            path: #KUBELET_ROOT#
             type: Directory
         - name: host-dev
           hostPath:
@@ -221,10 +235,11 @@ spec:
         - name: host-etc
           hostPath:
             path: /etc
-        # For iscsi
-        - name: host-var-iscsi
+        # For iscsiadm
+        - name: node-root
           hostPath:
-            path: /var/lib/iscsi
+            path: /
+            type: Directory
         # For xio_ig_id
         - name: xio-path-ig
           hostPath:

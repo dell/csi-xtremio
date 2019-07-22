@@ -4,6 +4,8 @@ This document discusses the deployment scripts for the CSI driver for Dell EMC X
 
 The CSI driver connects Dell EMC XtremIO storage to Kubernetes environment to provide persistent storage.
 
+**Note**: For PKS deployment please scroll down to PKS Integration section
+
 ## Platform and Software Dependencies
 ### Relevant Dell Products
 The CSI driver has been tested with XtremIO X1 / X2 XIOS 6.2.0 and 6.2.1.
@@ -34,7 +36,7 @@ Snapshots were recently added to Kubernetes. Depending on the K8s version used, 
 
 ```bash
 $ git clone https://github.com/dell/csi-xtremio-deploy.git
-$ cd csi-xtremio-deploy && git checkout 1.1.0
+$ cd csi-xtremio-deploy && git checkout 1.2.0
 ```
 3. Edit **csi.ini** file. Mandatory fields are `management_ip` - management address of XtremIO cluster, `csi_user` and `csi_password` - credentials used by the plugin to connect to the storage. `csi_user` and `csi_password` can be created prior to performing step 1, or can be created by an installation script. If user creation is left to the script, provide `initial_user` and `initial_password` in the **csi.ini**. For example, the credentials of the storage administrator. If nodes do not have direct access to the Internet, the local registry can be used. In such cases, populate the local registry with the plugin image and sidecar containers, and set `plugin_path` and `csi_.._path` variables. All parameters that can be changed in the file are described in the section "**csi.ini** Parameters".
 The below example presents the case when the storage administrator has the credentials `admin/password123` and the plugin used was created by the installation script `csiuser/password456`:
@@ -203,7 +205,8 @@ $ kubectl apply -f csi-tmp/plugin.yaml
 | csi_password | CSI user password |  Yes |
 | force | In the event that the IG name was created manually, a user should provide the 'force' flag to allow such modification in the XMS. | | No
 | verify | Perform connectivity verification | No | Yes
-| plugin_path | | Yes | docker.io/dellemcstorage/csi-xtremio:v1.0.0
+| kubelet_root | Kubelet path | Yes | /var/lib/kubelet
+| plugin_path | | Yes | docker.io/dellemcstorage/csi-xtremio:v1.2.0
 | csi_attacher_path | CSI attacher image | Yes | quay.io/k8scsi/csi-attacher:v1.0-canary
 | csi_cluster_driver_registrar_path | CSI cluster driver registrar image | Yes | quay.io/k8scsi/csi-cluster-driver-registrar:v1.0-canary
 | csi_node_driver_registrar_path | CSI node driver registrar image | Yes | quay.io/k8scsi/csi-node-driver-registrar:v1.0-canary
@@ -215,7 +218,7 @@ $ kubectl apply -f csi-tmp/plugin.yaml
 | csi_high_qos_policy | Bandwidth of High QoS policy profile | No | 15m
 | csi_medium_qos_policy | Bandwidth of Medium QoS policy profile | No | 5m
 | csi_low_qos_policy | Bandwidth of Low QoS policy profile | No | 1m
-
+| ephemeral_node | Set this parameter to True if your nodes are ephemeral (Pivotal PKS) | Yes | False
 
 ## Installation Script Parameters
 Installation script **install-csi-plugin.sh** requires a number of options and a correctly-filled **csi.ini** file. The script parameters are as follows:
@@ -228,4 +231,92 @@ Installation script **install-csi-plugin.sh** requires a number of options and a
 |    `-u`    |    Update the plugin from the new yaml files. With this flag, the installation script updates the docker images and YAML definitions for the driver. **USE WITH CARE!** See the explanation in the Upgrade section.
 |    `-g`    |    Only generate YAML definitions for k8s from the template. Recommended with `-u`.
 |    `-h`    |    Print help message
+
+## PKS Integration
+### Platform and Software Dependencies
+* Pivotal PKS 1.14 and above
+* iSCSI Portal configured at the XtremIO level
+* iSCSI vSphere network for PKS virtual machines
+
+**Note**: Pivotal PKS with NSX-T was not tested.
+
+### Download and Extract the Installer
+Clone the latest version of the XtremIO CSI installer bundle from the CSI XtremIO Deploy GitHub Repository to the Linux machine which has network access to the XMS and extract it.
+
+```bash
+$ git clone https://github.com/dell/csi-xtremio-deploy.git
+$ cd csi-xtremio-deploy && git checkout 1.2.0
+```
+
+### Configure the Installer
+Edit the **csi.ini** configuration file.
+
+**Note**: By default, the installation script is configured to download the required Docker images from the internet, if your environment has no Internet access directly/via proxy you can use VMware Harbor as an internal Docker repository and upload the images to it, and change the csi.ini parameters accordingly, see the example below.
+
+Mandatory fields:
+* management_ip - Management IP address or FQDN of the XtremIO Management Server.
+* csi_user and csi_password - Credentials used by the plugin to connect to the XtremIO Management Server. csi_user and csi_password can be created in advance, as suggested above, or they can be created by an installation script. If user creation is left to the script, the user is required to provide initial_user and initial_password in the csi.ini. For example, this can be credentials of the Storage Administrator.
+* kubelet_root=/var/vcap/data/kubelet
+* ephemeral_node=True
+
+For example:
+```bash
+management_ip=10.20.20.40
+initial_username=admin
+initial_password=password123
+csi_username=csiuser
+csi_password=password456
+force=No
+verify=Yes
+kubelet_root=/var/vcap/data/kubelet
+plugin_path=harbor.pks.xtremio/csi/csi-xtremio:pks
+csi_attacher_path=harbor.pks.xtremio/csi/csi-attacher:v1.0.1
+csi_cluster_driver_registrar_path=harbor.pks.xtremio/csi/csi-cluster-driver-registrar:v1.0.1
+csi_node_driver_registrar_path=harbor.pks.xtremio/csi/csi-node-driver-registrar:v1.0
+csi_provisioner_path=harbor.pks.xtremio/csi/csi-provisioner:v1.0.1
+csi_snapshotter_path=harbor.pks.xtremio/csi/csi-snapshotter:V1
+storage_class_name=csi-xtremio-sc
+list_of_clusters=xbrick1631
+list_of_initiators=
+csi_qos_policy_id=
+csi_high_qos_policy=15m
+csi_medium_qos_policy=5m
+csi_low_qos_policy=1m
+csi_xtremio_debug=1
+ephemeral_node=True
+```
+
+### Generate the Dell EMC XtremIO CSI Plugin
+Unlike native Kubernetes deployment, in PKS, the CSI plugin is provided as a Custom Workloads. Custom workloads define what a cluster includes out of the box. And these can be attached to a PKS plan which defines a set of resource types used for deploying clusters. First, navigate to the template directory and update the **secret-template.yaml** with the correct password of the XMS CSI user:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: csixtremio
+  namespace: kube-system
+stringData:
+  password: "#CSI_PASSWORD#"
+```
+After specifying the environment parameters run the **install-csi-plugin.sh** script with -g parameter to generate the plugin yaml file. This script also configures the CSI user and the CSI QoS policies on the XMS so make sure you have access to the XMS from the Linux machine which is used to run the installation script.
+```bash
+$ ./install-csi-plugin.sh -g
+```
+Upon completion you can find the YAML file in the current location under **csi-tmp** directory.
+
+Open the plugin.yaml file with a text editor and add the secret content you edited in the previous step to the beginning of the file, don’t forget to add the ‘---’  to separate the sections.
+
+Navigate to the Ops manager website, and click on Enterprise PKS.
+
+Select Active to activate the plan and make it available to developers deploying clusters and give it a unique name and description.
+
+At the bottom of the page, under (Optional) Add-ons - Use with caution, enter additional YAML configuration file you generated earlier including the Kubernetes secret, this allows PKS to add custom workloads to each cluster in this plan.
+
+Select the **Enable Privileged** to allow the CSI plugin containers to access physical devices and then click save.
+
+### Deploying Mandatory BOSH Add-Ons
+This section explains how to deploy BOSH Add-ons as a part of installing the Pivotal Cloud Foundry (PCF) platform. BOSH Add-ons are optional platform extensions that you deploy with BOSH rather than installing them as Ops Manager tiles. Pivotal recommends installing BOSH Add-ons immediately after deploying BOSH and Ops Manager, before you use Ops Manager to add tiles to the platform.
+
+To integrate PKS with the XtremIO CSI Plugin it’s required to install iSCSI add-on found at https://github.com/svrc-pivotal/iscsi-release :
+* Clone the latest version of the iscsi-release bundle from the svrc-pivotal GitHub Repository to BOSH
+* Edit the applying.sh script according to the instruction and run it on your BOSH machine, this script installs the necessary packages to support the CSI plugin on every Kubernetes cluster deployed by PKS.
 
